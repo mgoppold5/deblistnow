@@ -180,7 +180,7 @@ class RepoFileSpec:
 		while(j < len(self.fileName)):
 			c = self.fileName[j]
 
-			if(c == '/'):
+			if(c == '/' or c == '\\'):
 				lastSlashIndex = j
 			
 			j += 1
@@ -241,21 +241,22 @@ def sortList(myList):
 	return
 
 def sortList2(myList):
+	# On a list of 50000, this takes 15 seconds
+
 	myComp = CompareResult()
-	
 	myList2 = []
 	
 	print("Sorting list...")
 	
-	lastProgress100 = 0
 	
 	myLen = len(myList)
-	i = 0
 
 	if(myLen == 0):
 		print()
 		return myList2
 	
+	i = 0
+	lastProgress100 = 0
 	while(i < myLen):
 		progress100 = int(i * 100 / myLen)
 		if(lastProgress100 + 2 < progress100):
@@ -320,18 +321,18 @@ def dumpList(myList):
 #
 
 def getFileList(theDir):
-	myList1 = []
+	localList1 = []
 	
 	if(not dirExists2(theDir)):
 		return myList1
 	
-	myList2 = os.listdir(theDir)
-	if(myList2 == None):
-		return myList1
+	localList2 = os.listdir(theDir)
+	if(localList2 == None):
+		return localList1
 	
 	i = 0
-	while(i < len(myList2)):
-		entry = myList2[i]
+	while(i < len(localList2)):
+		entry = localList2[i]
 		
 		if(entry == "." or entry == ".."):
 			i += 1
@@ -342,40 +343,62 @@ def getFileList(theDir):
 			continue
 		
 		if(fileExists(pathCombine2(theDir, entry))):
-			myList1.append(pathCombine2(theDir, entry))
+			localList1.append(pathCombine2(theDir, entry))
 			i += 1
 			continue
 
 		if(dirExists2(pathCombine2(theDir, entry))):
 			if(len(entry) == 1):
 				if(entry[0] >= '0' and entry[0] <= '9'):
-					myList1.extend(getFileList(pathCombine2(theDir, entry)))
+					localList1.extend(getFileList(pathCombine2(theDir, entry)))
 					i += 1
 					continue
 
 		if(dirExists(pathCombine2(theDir, entry))):
-			myList1.extend(getFileList(pathCombine2(theDir, entry)))
+			localList1.extend(getFileList(pathCombine2(theDir, entry)))
 			i += 1
 			continue
 		
 		# otherwise, ignore path
 		i += 1
 	
-	return myList1
+	return localList1
 
+def replaceBackslash(localFiles):
+	print("Replacing backslashes in filenames in list...")
+	i = 0
+	while(i < len(localFiles)):
+		fileStr = localFiles[i]
+		j = 0
+		while(j < len(fileStr)):
+			if(fileStr[j] == '\\'):
+				fileStr[j] = '/'
+			j += 1
+		i += 1
+	return
+	
 def rebaseIfPathFound(path1, innerPath):
+	if(innerPath == None or innerPath == ""):
+		return None
+	
 	i = 0
 	path1Len = len(path1)
 	possibleMatchIndex = 0
 	isPossibleMatch = False
 	j = 0
 	while(i < path1Len):
+		c = path1[i]
 		if(not isPossibleMatch):
-			if(i == 0 and path1[0] != '/' and path1[0] != '\\'):
-				j = 0
-				isPossibleMatch = True
-				possibleMatchIndex = i
-				continue
+			if(i == 0):
+				if(c != '/'
+					and c != '\\'
+					and c == innerPath[0]):
+					
+					possibleMatchIndex = i
+					i = 1
+					j = 1
+					isPossibleMatch = True
+					continue
 			
 			if(path1[i] == '/' or path1[i] == '\\'):
 				j = 0
@@ -407,6 +430,7 @@ def rebaseIfPathFound(path1, innerPath):
 	return None
 
 def removeNonRepoFiles(localList):
+	print("Cleaning up paths in list...")
 	i = 0
 	while(i < len(localList)):
 		path1 = localList[i]
@@ -418,7 +442,7 @@ def removeNonRepoFiles(localList):
 				localList[i] = path2
 				i += 1
 				continue
-
+		
 		path2 = rebaseIfPathFound(path1, "pool/contrib")
 		if(path2 != None):
 			path2 = rebaseIfPathFound(path2, "contrib")
@@ -435,7 +459,7 @@ def removeNonRepoFiles(localList):
 				i += 1
 				continue
 		
-		del localList[i]
+		localList.pop(i)
 		continue
 	return
 
@@ -898,7 +922,8 @@ def main():
 				raise Exception("--output-dir already exists")
 
 		localFiles = getFileList(inputDir)
-		#removeNonRepoFiles(localFiles)
+		replaceBackslash(localFiles)
+		removeNonRepoFiles(localFiles)
 		myList = makeRegularListFromSimpleFileList(localFiles)
 		myList = sortList2(myList)
 		print("List length: " + str(len(myList)))
@@ -924,7 +949,8 @@ def main():
 		print("Package count: " + str(len(pkgList)))
 		
 		localFiles = makeSimpleFileListFromPackageList(pkgList)
-		#removeNonRepoFiles(localFiles)
+		replaceBackslash(localFiles)
+		removeNonRepoFiles(localFiles)
 		myList = makeRegularListFromSimpleFileList(localFiles)
 		myList = sortList2(myList)
 		print("List length: " + str(len(myList)))
