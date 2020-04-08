@@ -480,7 +480,7 @@ class ArchInfo:
 		self.longName = None
 		self.listName = None
 		
-def getListFromMirror(outputDir, mirror, archInfo):
+def getListFromMirror(outputDir, mirror, distName, archInfo):
 	if(dirExists(outputDir)):
 		raise Exception("output dir already exists: " + outputDir)
 
@@ -490,15 +490,21 @@ def getListFromMirror(outputDir, mirror, archInfo):
 	
 	makeDirs(outputDir)
 	os.chdir(outputDir)
-	# https://mirrors.xmission.com/debian/dists/testing/main/
-	r = os.system(
-		"wget -c"
-		+ " " + "https://"
+	
+	webPath = ("https://"
 		+ mirror
-		+ "/" + "debian/dists/bullseye/main"
+		+ "/" + "debian"
+		+ "/" + "dists" + "/" + distName
+		+ "/" + "main"
 		+ "/" + archInfo.longName
-		+ "/" + archInfo.listName + ".gz"
-		)
+		+ "/" + archInfo.listName + ".gz")
+	# Example: https://mirrors.xmission.com/debian/dists/testing/main/Packages.gz
+	print("Web path: " + webPath)
+	
+	r = os.system(
+		"wget"
+		+ " --quiet --show-progress --progress=bar"
+		+ " " + webPath)
 	if(r != 0):
 		raise Exception("getting list from mirror failed with error number: " + str(r))
 	
@@ -831,6 +837,8 @@ def downloadPackage(earlyDownloadDir, mirror, fileNameMinusPath, theDir):
 def main():
 	mirror = "mirrors.xmission.com"
 	#mirror = "cdimage.debian.org"
+	
+	distName = "testing"
 
 	relDir1 = os.getcwd()
 
@@ -950,7 +958,7 @@ def main():
 		if(dirExists2(outputDir)):
 			raise Exception("--output-dir already exists")
 
-		getListFromMirror(outputDir, mirror, archInfo)
+		getListFromMirror(outputDir, mirror, distName, archInfo)
 		
 		pkgList = parseMirrorList(outputDir, archInfo)
 		print("Package count: " + str(len(pkgList)))
