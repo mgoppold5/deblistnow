@@ -29,66 +29,19 @@
 
 import os
 import sys
-import random
 
 QUOTE = "\""
+NEWLINE = "\n"
 
-class PackageInfo:
-	def __init__(self):
-		self.pkgName = None
-		self.fileName = None
-		self.files = []
-		self.theDir = None
-		
-class ArchInfo:
-	def __init__(self):
-		self.name = None
-		self.longName = None
-		self.listName = None
+#
+# General string related functions
+#
 
 class CompareResult:
 	def __init__(self):
 		self.less = False
 		self.greater = False
-		
-class DebianFileSpec:
-	def __init__(self):
-		self.fileName = None
-		self.theDir = None
-		self.fileNameMinusPath = None
-
-	def calc(self):
-		if(self.fileName == None):
-			self.theDir = None
-			self.fileNameMinusPath = None
-			return
-		
-		j = 0
-		lastSlashIndex = 0
-		while(j < len(self.fileName)):
-			c = self.fileName[j]
-
-			if(c == '/'):
-				lastSlashIndex = j
-			
-			j += 1
-			
-		if(lastSlashIndex == 0):
-			raise Exception("file name invalid: " + self.fileName)
-
-		if(lastSlashIndex + 1 >= len(self.fileName)):
-			raise Exception("file name invalid: " + self.fileName)
-		
-		self.theDir = self.fileName[0:lastSlashIndex]
-		self.fileNameMinusPath = self.fileName[(lastSlashIndex + 1):]
-
-		return
-
-def printRaw(theStr):
-	s2 = str(theStr)
-	sys.stdout.write(s2)
-	sys.stdout.flush()
-
+	
 def strRange(theStr, start, theLen):
 	i = 0
 	s = ""
@@ -168,6 +121,19 @@ def compareStrings2(compRes, str1, str2):
 	if(compRes.less): myStr += "less"
 	if(compRes.greater): myStr += "greater"
 	print(str1 + "," + str2 + "," + myStr + ",")
+
+#
+# General helper functions
+#
+
+def printRaw(theStr):
+	s2 = str(theStr)
+	sys.stdout.write(s2)
+	sys.stdout.flush()
+
+#
+# General directory helper functions
+#
 	
 def pathCombine(path1, path2, sep):
 	if(path1 == None): return path2
@@ -193,241 +159,42 @@ def makeDirs(path1):
 	os.makedirs(path1)
 	return
 
-def getListFromMirror(outputDir, mirror, archInfo):
-	if(dirExists(outputDir)):
-		raise Exception("output dir already exists: " + outputDir)
+#
+# RepoFileSpec list functions
+#
 
-	relDir = os.getcwd()
-	
-	makeDirs(outputDir)
-	os.chdir(outputDir)
-	# https://mirrors.xmission.com/debian/dists/testing/main/
-	r = os.system(
-		"wget -c"
-		+ " " + "https://"
-		+ mirror
-		+ "/" + "debian/dists/bullseye/main"
-		+ "/" + archInfo.longName
-		+ "/" + archInfo.listName + ".gz"
-		)
-	if(r != 0):
-		raise Exception("getting list from mirror failed with error number: " + str(r))
-	
-	os.chdir(relDir)
-	return
+class RepoFileSpec:
+	def __init__(self):
+		self.fileName = None
+		self.theDir = None
+		self.fileNameMinusPath = None
 
-def addPropertyLine(pkg, labelStr, lineStr, lineNum):
-	if(labelStr == "Filename"):
-		if(pkg.fileName != None):
-			print("Line Number: " + str(lineNum))
-			raise Exception("property set twice: " + "Filename")
-		pkg.fileName = lineStr
+	def calc(self):
+		if(self.fileName == None):
+			self.theDir = None
+			self.fileNameMinusPath = None
+			return
+		
+		j = 0
+		lastSlashIndex = 0
+		while(j < len(self.fileName)):
+			c = self.fileName[j]
+
+			if(c == '/'):
+				lastSlashIndex = j
+			
+			j += 1
+			
+		if(lastSlashIndex == 0):
+			raise Exception("file name invalid: " + self.fileName)
+
+		if(lastSlashIndex + 1 >= len(self.fileName)):
+			raise Exception("file name invalid: " + self.fileName)
+		
+		self.theDir = self.fileName[0:lastSlashIndex]
+		self.fileNameMinusPath = self.fileName[(lastSlashIndex + 1):]
+
 		return
-
-	if(labelStr == "Directory"):
-		if(pkg.theDir != None):
-			print("Line Number: " + str(lineNum))
-			raise Exception("property set twice: " + "Directory")
-		pkg.theDir = lineStr
-		return
-
-	if(labelStr == "Files"):
-		spaceCount = getSepListLength(lineStr, ' ')
-		if(spaceCount != 2):
-			print("Line Number: " + str(lineNum))
-			raise Exception("property malformed: " + "Files")
-		pkg.files.append(getSepListItem(lineStr, 2, ' '))
-		return
-	
-def parseMirrorList(outputDir, archInfo):
-	if(not dirExists(outputDir)):
-		raise Exception("working dir does not exist: " + outputDir)
-
-	relDir = os.getcwd()
-	
-	os.chdir(outputDir)
-	
-	r = os.system("gunzip"
-		+ " --keep"
-		+ " " + archInfo.listName + ".gz")
-	if(r != 0):
-		raise Exception("unzip error: " + archInfo.listName + ".gz")
-	
-	pkgList = []
-	
-	print("Reading list from mirror list...")
-	
-	f1 = open(archInfo.listName, "r")
-	s1 = "\n"
-	havePackage = False
-	pkgName = None
-	lineNum = 0
-	pkg = None
-	labelStr = None
-	lastPkgCount = 0
-	while(s1 != None):
-		if(lastPkgCount + 1000 < len(pkgList)):
-			printRaw(" .")
-			lastPkgCount = len(pkgList)
-			continue
-		
-		if(havePackage):
-			if(s1 == ""):
-				havePackage = False
-				print("Done with package")
-				pkgList.append(pkg)
-				pkg = None
-				s1 = f1.readline()
-				lineNum += 1
-				continue
-
-			if(s1 == "\n"):
-				havePackage = False
-				#print("Done with package, lineNo=" + str(lineNum))
-				pkgList.append(pkg)
-				pkg = None
-				s1 = f1.readline()
-				lineNum += 1
-				continue
-			
-			i = 0
-			while(True):
-				if(i >= len(s1)):
-					# ignore string
-					s1 = f1.readline()
-					lineNum += 1
-					break
-
-				c = s1[i]
-				#print("Eating char: " + c)
-				
-				if(labelStr == None):
-					if(i > 0 and c == ':'):
-						labelStr = s1[0:i]
-						#print("Label=" + labelStr)
-						
-						i += 1
-						continue
-					
-					if(c >= 'A' and c <= 'Z'):
-						i += 1
-						continue
-
-					if(c >= 'a' and c <= 'z'):
-						i += 1
-						continue
-
-					if(c >= '0' and c <= '9'):
-						i += 1
-						continue
-
-					if(c == '-'):
-						i += 1
-						continue
-
-				if(labelStr != None):
-					#print("WHAT")
-					if(c == ' '):
-						# value continuation
-						
-						addPropertyLine(pkg, labelStr, s1[(i + 1):].strip(), lineNum)
-						
-						s1 = f1.readline()
-						lineNum += 1
-						break
-					
-					if(c == 13):
-						#print("UMM")
-						# ignore line
-						s1 = f1.readline()
-						lineNum += 1
-						break
-
-					if(c == 10):
-						#print("BUG")
-						# ignore line
-						s1 = f1.readline()
-						lineNum += 1
-						break
-					
-					if(c == '\n'):
-						#print("TRIP")
-						# ignore line
-						s1 = f1.readline()
-						lineNum += 1
-						break
-
-					if(i == 0):
-						#print("YO!")
-						labelStr = None
-						break
-				
-				print("i: " + str(i))
-				print("Label: " + labelStr)
-				print("Line Number: " + str(lineNum))
-				raise Exception("unexpected char: " + c)
-			
-			pass
-			continue
-
-		# havePackage is false
-		
-		if(s1 == "\n"):
-			s1 = f1.readline()
-			lineNum += 1
-			continue
-		
-		if(s1.startswith("Package: ")):
-			pkgName = s1[len("Package: "):].strip()
-			#print("Package: " + pkgName)
-			havePackage = True
-			pkg = PackageInfo()
-			pkg.pkgName = pkgName
-			s1 = f1.readline()
-			lineNum += 1
-			continue
-		
-		if(s1 == "" or s1 == None): break
-		
-		print("Line Number: " + str(lineNum))
-		raise Exception("invalid line: " + s1)
-	
-	printRaw("\n")
-	os.chdir(relDir)
-	return pkgList
-
-def makeRegularListFromPackageList(pkgList):
-	i = 0
-	pLen = len(pkgList)
-	myList = []
-	while(i < pLen):
-		pkg = pkgList[i]
-
-		if(pkg.fileName != None):
-			spec = DebianFileSpec()
-			spec.fileName = pkg.fileName
-			spec.calc()
-			
-			myList.append(spec)
-			
-			i += 1
-			continue
-		
-		if(pkg.theDir != None):
-			for fName in pkg.files:
-				spec = DebianFileSpec()
-				spec.fileNameMinusPath = fName
-				spec.theDir = pkg.theDir
-				spec.fileName = pathCombine2(spec.theDir, spec.fileNameMinusPath)
-				
-				myList.append(spec)
-			
-			i += 1
-			continue
-		
-		raise Exception("pkg not valid")
-	
-	return myList
 
 def sortListSwapAt(myList, i):
 	temp = myList[i + 1]
@@ -435,6 +202,8 @@ def sortListSwapAt(myList, i):
 	myList[i] = temp
 
 def sortList(myList):
+	# On a list of 50000, this takes 5 hours
+	
 	myComp = CompareResult()
 	
 	while(True):
@@ -448,7 +217,7 @@ def sortList(myList):
 				myList[i].theDir,
 				myList[i + 1].theDir)
 
-			if((not myComp.less) and (not myComp.greater)):
+			if(not myComp.less and not myComp.greater):
 				compareStrings(myComp,
 					myList[i].fileNameMinusPath,
 					myList[i + 1].fileNameMinusPath)
@@ -457,7 +226,9 @@ def sortList(myList):
 				sortListSwapAt(myList, i)
 				didSwap = True
 				
-			if((not myComp.less) and (not myComp.greater)):
+			if(not myComp.less and not myComp.greater):
+				#spec = myList[i]
+				#print("removing duplicate: " + spec.theDir + "," + spec.fileNameMinusPath)
 				del myList[i]
 				continue
 			
@@ -511,7 +282,7 @@ def sortList2(myList):
 				spec.theDir,
 				myList2[inBetween].theDir)
 			
-			if((not myComp.less) and (not myComp.greater)):
+			if(not myComp.less and not myComp.greater):
 				compareStrings(myComp,
 					spec.fileNameMinusPath,
 					myList2[inBetween].fileNameMinusPath)
@@ -532,7 +303,7 @@ def sortList2(myList):
 		#print("doing again")
 		continue
 	
-	printRaw("\n")
+	printRaw(NEWLINE)
 	return myList2
 
 def dumpList(myList):
@@ -542,11 +313,16 @@ def dumpList(myList):
 		print(spec.theDir + "," + spec.fileNameMinusPath)
 		
 		i += 1
-	
+
+#
+# Simple file list functions,
+# that relate to Debian cd-s and repositories
+#
+
 def getFileList(theDir):
 	myList1 = []
 	
-	if(not dirExists(theDir)):
+	if(not dirExists2(theDir)):
 		return myList1
 	
 	myList2 = os.listdir(theDir)
@@ -595,13 +371,13 @@ def rebaseIfPathFound(path1, innerPath):
 	j = 0
 	while(i < path1Len):
 		if(not isPossibleMatch):
-			if(i == 0 and path1[0] != '/'):
+			if(i == 0 and path1[0] != '/' and path1[0] != '\\'):
 				j = 0
 				isPossibleMatch = True
 				possibleMatchIndex = i
 				continue
 			
-			if(path1[i] == '/'):
+			if(path1[i] == '/' or path1[i] == '\\'):
 				j = 0
 				i += 1
 				isPossibleMatch = True
@@ -618,9 +394,7 @@ def rebaseIfPathFound(path1, innerPath):
 				j += 1
 				continue
 			
-			if(path1[i] == '/'):
-				return path1[possibleMatchIndex:]
-				
+			if(path1[i] == '/' or path1[i] == '\\'): break
 			
 			isPossibleMatch = False
 			continue
@@ -637,17 +411,9 @@ def removeNonRepoFiles(localList):
 	while(i < len(localList)):
 		path1 = localList[i]
 		
-		path2 = rebaseIfPathFound(path1, "pool/non-free")
-		if(path2 != None):
-			path2 = rebaseIfPathFound(path1, "non-free")
-			if(path2 != None):
-				localList[i] = path2
-				i += 1
-				continue
-		
 		path2 = rebaseIfPathFound(path1, "pool/main")
 		if(path2 != None):
-			path2 = rebaseIfPathFound(path1, "main")
+			path2 = rebaseIfPathFound(path2, "main")
 			if(path2 != None):
 				localList[i] = path2
 				i += 1
@@ -655,7 +421,15 @@ def removeNonRepoFiles(localList):
 
 		path2 = rebaseIfPathFound(path1, "pool/contrib")
 		if(path2 != None):
-			path2 = rebaseIfPathFound(path1, "contrib")
+			path2 = rebaseIfPathFound(path2, "contrib")
+			if(path2 != None):
+				localList[i] = path2
+				i += 1
+				continue
+		
+		path2 = rebaseIfPathFound(path1, "pool/non-free")
+		if(path2 != None):
+			path2 = rebaseIfPathFound(path2, "non-free")
 			if(path2 != None):
 				localList[i] = path2
 				i += 1
@@ -663,13 +437,257 @@ def removeNonRepoFiles(localList):
 		
 		del localList[i]
 		continue
+	return
+
+#
+# Debian formatted list functions
+#
+
+class PackageInfo:
+	def __init__(self):
+		self.pkgName = None
+		self.fileName = None
+		self.files = []
+		self.theDir = None
+
+class ArchInfo:
+	def __init__(self):
+		self.name = None
+		self.longName = None
+		self.listName = None
+		
+def getListFromMirror(outputDir, mirror, archInfo):
+	if(dirExists(outputDir)):
+		raise Exception("output dir already exists: " + outputDir)
+
+	relDir = os.getcwd()
+	
+	makeDirs(outputDir)
+	os.chdir(outputDir)
+	# https://mirrors.xmission.com/debian/dists/testing/main/
+	r = os.system(
+		"wget -c"
+		+ " " + "https://"
+		+ mirror
+		+ "/" + "debian/dists/bullseye/main"
+		+ "/" + archInfo.longName
+		+ "/" + archInfo.listName + ".gz"
+		)
+	if(r != 0):
+		raise Exception("getting list from mirror failed with error number: " + str(r))
+	
+	os.chdir(relDir)
+	return
+
+def addPropertyLine(pkg, labelStr, lineStr, lineNum):
+	if(labelStr == "Filename"):
+		if(pkg.fileName != None):
+			print("Line Number: " + str(lineNum))
+			raise Exception("property set twice: " + "Filename")
+		pkg.fileName = lineStr
+		return
+
+	if(labelStr == "Directory"):
+		if(pkg.theDir != None):
+			print("Line Number: " + str(lineNum))
+			raise Exception("property set twice: " + "Directory")
+		pkg.theDir = lineStr
+		return
+
+	if(labelStr == "Files"):
+		spaceCount = getSepListLength(lineStr, ' ')
+		if(spaceCount != 2):
+			print("Line Number: " + str(lineNum))
+			raise Exception("property malformed: " + "Files")
+		pkg.files.append(getSepListItem(lineStr, 2, ' '))
+		return
+
+def parseMirrorList(outputDir, archInfo):
+	if(not dirExists(outputDir)):
+		raise Exception("working dir does not exist: " + outputDir)
+
+	relDir = os.getcwd()
+	
+	os.chdir(outputDir)
+	
+	r = os.system("gunzip"
+		+ " --keep"
+		+ " " + archInfo.listName + ".gz")
+	if(r != 0):
+		raise Exception("unzip error: " + archInfo.listName + ".gz")
+	
+	pkgList = []
+	
+	print("Reading list from mirror list...")
+	
+	f1 = open(archInfo.listName, "r")
+	s1 = NEWLINE
+	havePackage = False
+	pkgName = None
+	lineNum = 0
+	pkg = None
+	labelStr = None
+	lastPkgCount = 0
+	while(s1 != None):
+		if(lastPkgCount + 1000 < len(pkgList)):
+			printRaw(" .")
+			lastPkgCount = len(pkgList)
+			continue
+		
+		if(havePackage):
+			if(s1 == ""):
+				havePackage = False
+				print("Done with package")
+				pkgList.append(pkg)
+				pkg = None
+				s1 = f1.readline()
+				lineNum += 1
+				continue
+
+			if(s1 == NEWLINE):
+				havePackage = False
+				#print("Done with package, lineNo=" + str(lineNum))
+				pkgList.append(pkg)
+				pkg = None
+				s1 = f1.readline()
+				lineNum += 1
+				continue
+			
+			i = 0
+			while(True):
+				if(i >= len(s1)):
+					# ignore string
+					s1 = f1.readline()
+					lineNum += 1
+					break
+
+				c = s1[i]
+				#print("Eating char: " + c)
+				
+				if(labelStr == None):
+					if(i > 0 and c == ':'):
+						labelStr = s1[0:i]
+						#print("Label=" + labelStr)
+						
+						i += 1
+						continue
+					
+					if(c >= 'A' and c <= 'Z'):
+						i += 1
+						continue
+
+					if(c >= 'a' and c <= 'z'):
+						i += 1
+						continue
+
+					if(c >= '0' and c <= '9'):
+						i += 1
+						continue
+
+					if(c == '-'):
+						i += 1
+						continue
+
+				if(labelStr != None):
+					if(c == ' '):
+						# value continuation
+						
+						addPropertyLine(pkg, labelStr, s1[(i + 1):].strip(), lineNum)
+						
+						s1 = f1.readline()
+						lineNum += 1
+						break
+					
+					if(c == 13):
+						# ignore line
+						s1 = f1.readline()
+						lineNum += 1
+						break
+
+					if(c == 10):
+						# ignore line
+						s1 = f1.readline()
+						lineNum += 1
+						break
+					
+					if(c == '\n'):
+						# ignore line
+						s1 = f1.readline()
+						lineNum += 1
+						break
+
+					if(i == 0):
+						labelStr = None
+						break
+				
+				print("i: " + str(i))
+				print("Label: " + labelStr)
+				print("Line Number: " + str(lineNum))
+				raise Exception("unexpected char: " + c)
+			
+			pass
+			continue
+
+		# havePackage is false
+		
+		if(s1 == NEWLINE):
+			s1 = f1.readline()
+			lineNum += 1
+			continue
+		
+		if(s1.startswith("Package: ")):
+			pkgName = s1[len("Package: "):].strip()
+			#print("Package: " + pkgName)
+			havePackage = True
+			pkg = PackageInfo()
+			pkg.pkgName = pkgName
+			s1 = f1.readline()
+			lineNum += 1
+			continue
+		
+		if(s1 == "" or s1 == None): break
+		
+		print("Line Number: " + str(lineNum))
+		raise Exception("invalid line: " + s1)
+	
+	printRaw(NEWLINE)
+	os.chdir(relDir)
+	return pkgList
+
+#
+# Cross logic functions 1
+#
+
+def makeSimpleFileListFromPackageList(pkgList):
+	i = 0
+	pLen = len(pkgList)
+	localFiles = []
+	while(i < pLen):
+		pkg = pkgList[i]
+
+		if(pkg.fileName != None):
+			localFiles.append(pkg.fileName)
+			
+			i += 1
+			continue
+		
+		if(pkg.theDir != None):
+			for fName in pkg.files:
+				localFiles.append(pathCombine2(pkg.theDir, fName))
+			
+			i += 1
+			continue
+		
+		raise Exception("pkg not valid")
+	
+	return localFiles
 
 def makeRegularListFromSimpleFileList(localFiles):
 	myList = []
 	i = 0
 	fLen = len(localFiles)
 	while(i < fLen):
-		spec = DebianFileSpec()
+		spec = RepoFileSpec()
 		spec.fileName = localFiles[i]
 		spec.calc()
 		
@@ -678,6 +696,11 @@ def makeRegularListFromSimpleFileList(localFiles):
 		i += 1
 		
 	return myList
+
+
+#
+# Scratch functions from previous versions
+#
 
 def downloadFilesMaybe(earlyDownloadDir, mirror, oldRepoPath, pkgList, localList):
 	i = 0
@@ -770,6 +793,10 @@ def downloadPackage(earlyDownloadDir, mirror, fileNameMinusPath, theDir):
 	
 	return
 
+#
+# Command processing functions
+#
+
 def main():
 	mirror = "mirrors.xmission.com"
 	#mirror = "cdimage.debian.org"
@@ -808,8 +835,8 @@ def main():
 		nextArg = None
 		if(i + 1 < count): nextArg = sys.argv[i + 1]
 		
-		if(arg == "--get-list-from-mirror"): getList1 = True
-		if(arg == "--get-list-from-cd-mount"): getList2 = True
+		if(arg == "--get-list-from-cd-mount"): getList1 = True
+		if(arg == "--get-list-from-mirror"): getList2 = True
 		if(arg == "--download"): download = True
 		
 		if(arg == "--compare-lists"):
@@ -861,6 +888,23 @@ def main():
 
 	if(getList1):
 		os.chdir(relDir1)
+
+		if(inputDir == None):
+			raise Exception("with --get-list-from-cd-mount, --input-dir must be set")
+		if(not dirExists2(inputDir)):
+			raise Exception("--input-dir does not exist")
+		if(outputDir != None):
+			if(dirExists2(outputDir)):
+				raise Exception("--output-dir already exists")
+
+		localFiles = getFileList(inputDir)
+		#removeNonRepoFiles(localFiles)
+		myList = makeRegularListFromSimpleFileList(localFiles)
+		myList = sortList2(myList)
+		print("List length: " + str(len(myList)))
+
+	if(getList2):
+		os.chdir(relDir1)
 		
 		if(arch == None):
 			raise Exception("with --get-list-from-mirror, --arch must be set")
@@ -879,29 +923,15 @@ def main():
 		pkgList = parseMirrorList(outputDir, archInfo)
 		print("Package count: " + str(len(pkgList)))
 		
-		myList = makeRegularListFromPackageList(pkgList)
+		localFiles = makeSimpleFileListFromPackageList(pkgList)
+		#removeNonRepoFiles(localFiles)
+		myList = makeRegularListFromSimpleFileList(localFiles)
 		myList = sortList2(myList)
 		print("List length: " + str(len(myList)))
 
-	if(getList2):
-		os.chdir(relDir1)
-
-		if(inputDir == None):
-			raise Exception("with --get-list-from-cd-mount, --input-dir must be set")
-		if(not dirExists2(inputDir)):
-			raise Exception("--input-dir does not exist")
-		if(dirExists2(outputDir)):
-			raise Exception("--output-dir already exists")
-
-		localList = getFileList(inputDir)
-		removeNonRepoFiles(localList)
-		myList = makeRegularListFromSimpleFileList(localList)
-		myList = sortList2(myList)
-		print("List length: " + str(len(myList)))
 		
 	#downloadFilesMaybe(earlyDownloadDir, mirror, oldRepoPath, pkgList, localList)
 
 	print("DONE.")
 
 main()
-
