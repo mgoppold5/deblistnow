@@ -430,7 +430,7 @@ def rebaseIfPathFound(path1, innerPath):
 	return None
 
 def removeNonRepoFiles(localList):
-	print("Cleaning up paths in list...")
+	print("Removing non repository files in list...")
 	i = 0
 	while(i < len(localList)):
 		path1 = localList[i]
@@ -486,6 +486,8 @@ def getListFromMirror(outputDir, mirror, archInfo):
 
 	relDir = os.getcwd()
 	
+	print("Downloading arch based list...")
+	
 	makeDirs(outputDir)
 	os.chdir(outputDir)
 	# https://mirrors.xmission.com/debian/dists/testing/main/
@@ -531,6 +533,8 @@ def parseMirrorList(outputDir, archInfo):
 		raise Exception("working dir does not exist: " + outputDir)
 
 	relDir = os.getcwd()
+
+	print("Unzipping arch list...")
 	
 	os.chdir(outputDir)
 	
@@ -542,7 +546,7 @@ def parseMirrorList(outputDir, archInfo):
 	
 	pkgList = []
 	
-	print("Reading list from mirror list...")
+	print("Loading arch list...")
 	
 	f1 = open(archInfo.listName, "r")
 	s1 = NEWLINE
@@ -683,6 +687,8 @@ def parseMirrorList(outputDir, archInfo):
 #
 
 def makeSimpleFileListFromPackageList(pkgList):
+	print("Working on list...")
+
 	i = 0
 	pLen = len(pkgList)
 	localFiles = []
@@ -707,6 +713,7 @@ def makeSimpleFileListFromPackageList(pkgList):
 	return localFiles
 
 def makeRegularListFromSimpleFileList(localFiles):
+	print("Working on list...")
 	myList = []
 	i = 0
 	fLen = len(localFiles)
