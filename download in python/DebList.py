@@ -315,6 +315,180 @@ def dumpList(myList):
 		
 		i += 1
 
+def writeListToFile(fileObj, myList):
+	for spec in myList:
+		fileObj.write("DictBegin" + NEWLINE)
+		fileObj.write(
+			"Type/String"
+			+ "," + "type"
+			+ "," + "RepoFileSpec" + NEWLINE)
+		
+		fileObj.write(
+			"Type/String"
+			+ "," + "theDir"
+			+ "," + spec.theDir + NEWLINE)
+		fileObj.write(
+			"Type/String"
+			+ "," + "fileNameMinusPath"
+			+ "," + spec.fileNameMinusPath + NEWLINE)
+		
+		fileObj.write("DictEnd" + NEWLINE)
+
+def addDictValue(spec, propertyName, valueStr, lineStr, lineNum):
+	#print("spec: " + str(propertyName) + "," + str(valueStr))
+	if(propertyName == "theDir"):
+		if(spec.theDir != None):
+			print("Line Number: " + str(lineNum))
+			raise Exception("dict property set twice: " + "theDir")
+		spec.theDir = valueStr
+		return
+
+	if(propertyName == "fileNameMinusPath"):
+		if(spec.fileNameMinusPath != None):
+			print("Line Number: " + str(lineNum))
+			raise Exception("dict property set twice: " + "fileNameMinusPath")
+		spec.fileNameMinusPath = valueStr
+		return
+
+	print("lineNum: " + str(lineNum))
+	raise Exception("line not recognized: " + lineStr)
+	return
+
+def parseListFromFile(fileObj):
+	myList = []
+	
+	print("Reading list from file...")
+	
+	haveDict = False
+	haveSpec = False
+	lineNum = 0
+	spec = None
+	s1 = fileObj.readline()
+	lastSpecCount = 0
+	while(True):
+		if(lastSpecCount + 1000 < len(myList)):
+			printRaw(" .")
+			lastSpecCount = len(myList)
+			continue
+
+		if(s1 == NEWLINE):
+			lineNum += 1
+			s1 = fileObj.readline()
+			continue
+		
+		if(s1 == ""):
+			break
+	
+		line = s1.strip()
+		
+		if(not haveDict):
+			lineLen = getSepListLength(line, ',')
+			#print(lineLen)
+			if(lineLen == 0):
+				csvType = getSepListItem(line, 0, ',')
+				if(csvType == "DictBegin"):
+					haveDict = True
+					s1 = fileObj.readline()
+					lineNum += 1
+					continue
+			
+			print("lineNum: " + str(lineNum))
+			raise Exception("line not recognized: " + line)
+		
+		if(haveDict and not haveSpec):
+			lineLen = getSepListLength(line, ',')
+			if(lineLen == 2):
+				i = 0
+				while(i < 3):
+					if(i == 0):
+						csvType = getSepListItem(line, i, ',')
+						if(csvType == "Type/String"):
+							i += 1
+							continue
+					if(i == 1):
+						csvField = getSepListItem(line, i, ',')
+						if(csvField == "type"):
+							i += 1
+							continue
+					if(i == 2):
+						csvValue = getSepListItem(line, i, ',')
+						if(csvValue == "RepoFileSpec"):
+							i += 1
+							continue
+					
+					print("lineNum: " + str(lineNum))
+					raise Exception("line not recognized: " + line)
+					
+				haveSpec = True
+				spec = RepoFileSpec()
+				s1 = fileObj.readline()
+				lineNum += 1
+				continue
+
+			print("lineNum: " + str(lineNum))
+			raise Exception("line not recognized: " + line)
+						
+		if(haveDict and haveSpec):
+			lineLen = getSepListLength(line, ',')
+			if(lineLen == 2):
+				i = 0
+				while(i < 3):
+					if(i == 0):
+						csvType = getSepListItem(line, i, ',')
+						if(csvType == "Type/String"):
+							i += 1
+							continue
+						
+						print("lineNum: " + str(lineNum))
+						raise Exception("line not recognized: " + line)
+						
+								
+					if(i == 1):
+						addDictValue(
+							spec,
+							getSepListItem(line, 1, ','),
+							getSepListItem(line, 2, ','),
+							line,
+							lineNum)
+						break
+						
+					print("lineNum: " + str(lineNum))
+					raise Exception("line not recognized: " + line)
+
+				s1 = fileObj.readline()
+				lineNum += 1
+				continue
+			
+			if(lineLen == 0):
+				i = 0
+				while(i < 3):
+					if(i == 0):
+						csvType = getSepListItem(line, i, ',')
+						if(csvType == "DictEnd"):
+							if(spec.theDir == None
+								or spec.fileNameMinusPath == None):
+								
+								print("lineNum: " + str(lineNum))
+								raise Exception("dict not valid: " + line)
+							
+							myList.append(spec)
+							break
+						
+					print("lineNum: " + str(lineNum))
+					raise Exception("line not recognized: " + line)
+
+				spec = None
+				haveDict = False
+				haveSpec = False
+				s1 = fileObj.readline()
+				lineNum += 1
+				continue
+		print("lineNum: " + str(lineNum))
+		raise Exception("line not recognized: " + line)
+		continue
+	printRaw(NEWLINE)
+	return myList
+
 #
 # Simple file list functions,
 # that relate to Debian cd-s and repositories
@@ -859,6 +1033,7 @@ def main():
 	
 	getList1 = False
 	getList2 = False
+	getList3 = False
 	download = False
 	compareLists = False
 	outputDir = None
@@ -876,6 +1051,7 @@ def main():
 		
 		if(arg == "--get-list-from-cd-mount"): getList1 = True
 		if(arg == "--get-list-from-mirror"): getList2 = True
+		if(arg == "--get-list-from-dir"): getList3 = True
 		if(arg == "--download"): download = True
 		
 		if(arg == "--compare-lists"):
@@ -943,6 +1119,13 @@ def main():
 		myList = sortList2(myList)
 		print("List length: " + str(len(myList)))
 
+		if(outputDir != None):
+			makeDirs(outputDir)
+			fileObj = open(pathCombine2(outputDir, "list1.csv"), "w")
+			fileObj.seek(0, 0)
+			writeListToFile(fileObj, myList)
+			fileObj.close()
+
 	if(getList2):
 		os.chdir(relDir1)
 		
@@ -970,6 +1153,21 @@ def main():
 		myList = sortList2(myList)
 		print("List length: " + str(len(myList)))
 
+	if(getList3):
+		os.chdir(relDir1)
+		
+		if(inputDir == None):
+			raise Exception("with --get-list-from-dir, --input-dir must be set")
+		if(not dirExists(inputDir)):
+			raise Exception("--input-dir does not exist")
+		
+		fileObj = open(pathCombine2(inputDir, "list1.csv"), "r")
+		fileObj.seek(0, 0)
+		myList = parseListFromFile(fileObj)
+		fileObj.close()
+		#dumpList(myList)
+		
+		myList = sortList2(myList)
 		
 	#downloadFilesMaybe(earlyDownloadDir, mirror, oldRepoPath, pkgList, localList)
 
