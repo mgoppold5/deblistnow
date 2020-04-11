@@ -489,6 +489,67 @@ def parseListFromFile(fileObj):
 	printRaw(NEWLINE)
 	return myList
 
+def compareListsSorted(myList1, myList2):
+	myList3 = []
+	myComp = CompareResult()
+	
+	print("Comparing lists...")
+	
+	i = 0
+	theLen = len(myList2)
+	lastProgress100 = 0
+	while(i < theLen):
+		progress100 = int(i * 100 / theLen)
+		if(lastProgress100 + 2 < progress100):
+			printRaw(" " + str(progress100) + "%")
+			lastProgress100 = progress100
+
+		spec = myList2[i]
+		
+		insertMax = len(myList1)
+		insertMin = 0
+		
+		while(True):
+			inBetween = int((insertMax + insertMin) / 2)
+			
+			if(insertMin == insertMax):
+				#myList2.insert(inBetween, spec)
+				myList3.append(spec)
+				break
+
+			if(inBetween >= len(myList2)):
+				#myList2.insert(inBetween, spec)
+				myList3.append(spec)
+				break
+			
+			compareStrings(myComp,
+				spec.theDir,
+				myList1[inBetween].theDir)
+			
+			if(not myComp.less and not myComp.greater):
+				compareStrings(myComp,
+					spec.fileNameMinusPath,
+					myList1[inBetween].fileNameMinusPath)
+				
+			if(myComp.greater):
+				insertMin = inBetween + 1
+				continue
+			
+			if(myComp.less):
+				insertMax = inBetween
+				continue
+			
+			# duplicate
+			# DONT DO ANYTHING
+			break
+		
+		i += 1
+		#print("doing again")
+		continue
+	
+	printRaw(NEWLINE)
+	return myList3
+
 #
 # Simple file list functions,
 # that relate to Debian cd-s and repositories
@@ -908,99 +969,47 @@ def makeRegularListFromSimpleFileList(localFiles):
 		
 	return myList
 
-
 #
-# Scratch functions from previous versions
+# Download functions
 #
 
-def downloadFilesMaybe(earlyDownloadDir, mirror, oldRepoPath, pkgList, localList):
+def downloadFiles(outputDir, mirror, myList):
 	i = 0
-	while(i < len(pkgList)):
-		pkg = pkgList[i]
-				
-		if(pkg.fileName != None):
-			fs1 = FilePathSplit()
-			fs1.fileName = pkg.fileName
-			fs1.calc()
+	while(i < len(myList)):
+		spec = myList[i]
+		
+		if(spec.theDir == None
+			or spec.fileNameMinusPath == None):
 			
-			j = 0
-			isFound = False
-			while(j < len(localList)):
-				fs2 = FilePathSplit()
-				fs2.fileName = localList[j]
-				fs2.calc()
-				
-				if(fs2.theDir.find(fs1.theDir)):
-					if(fs1.fileNameMinusPath == fs2.fileNameMinusPath):
-						isFound = True
-						break
-				
-				j += 1
-			
-			if(isFound):
-				skipDownloadPackage(earlyDownloadDir, fs1.fileNameMinusPath, fs1.theDir)
-			
-			if(not isFound):
-				downloadPackage(earlyDownloadDir, mirror, fs1.fileNameMinusPath, fs1.theDir)
-		
-		if(pkg.fileName == None):
-			for fName in pkg.files:
-				fileNameMinusPath = fName
-				theDir = pkg.theDir
-				
-				j = 0
-				isFound = False
-				while(j < len(localList)):
-					fs2 = FilePathSplit()
-					fs2.fileName = localList[j]
-					fs2.calc()
-					
-					if(fs2.theDir.find(theDir)):
-						if(fileNameMinusPath == fs2.fileNameMinusPath):
-							isFound = True
-							break
-					
-					j += 1
-				
-				if(isFound):
-					skipDownloadPackage(earlyDownloadDir, fileNameMinusPath, theDir)
-				
-				if(not isFound):
-					downloadPackage(earlyDownloadDir, mirror, fileNameMinusPath, theDir)
-		
-		#if(not fs1.theDir.startswith("pool/main/c/clutter")):
-		#	i += 1
-		#	continue
-		
-		
+			raise Exception("a RepoFileSpec is bad")
+
+		downloadFile(outputDir, mirror, spec.fileNameMinusPath, spec.theDir)
+
 		i += 1
 
 	return
 
-def skipDownloadPackage(earlyDownloadDir, fileNameMinusPath, theDir):
-	print("dont need to download: " + fileNameMinusPath)
-	return
-	
-
-def downloadPackage(earlyDownloadDir, mirror, fileNameMinusPath, theDir):
-	
-	print("need to download: " + fileNameMinusPath)
+def downloadFile(outputDir, mirror, fileNameMinusPath, theDir):
+	print("filename: " + fileNameMinusPath)
 	print("thedir: " + theDir)
 	
-	downPath = pathCombine2(earlyDownloadDir, "repo-new")
+	downPath = pathCombine2(outputDir, "pool")
 	downPath = pathCombine2(downPath, theDir)
 	makeDirs(downPath)
 	os.chdir(downPath)
 	
-	r = os.system(
-		"wget -c"
-		+ " " + "https://"
+	webPath = ("https://"
 		+ mirror
 		+ "/" + "debian"
-		+ "/" + theDir + "/" + fileNameMinusPath
-		)
+		+ "/" + "pool"
+		+ "/" + theDir + "/" + fileNameMinusPath)
+	
+	r = os.system(
+		"wget -c"
+		+ " --quiet --show-progress --progress=bar"
+		+ " " + webPath)
 	if(r != 0):
-		raise Exception("file download failed: " + fs1.fileNameMinusPath)
+		raise Exception("file download failed: " + fileNameMinusPath)
 	
 	return
 
@@ -1061,7 +1070,7 @@ def main():
 			if(nextArg == None or nextArg2 == None):
 				raise Exception("--compare-lists needs two list directories as params")
 			
-			if(not existsDir(nextArg) or not existsDir(nextArg2)):
+			if(not dirExists2(nextArg) or not dirExists2(nextArg2)):
 				raise Exception("--compare-lists needs two list directories as params")
 			
 			listDir1 = nextArg
@@ -1153,6 +1162,13 @@ def main():
 		myList = sortList2(myList)
 		print("List length: " + str(len(myList)))
 
+		if(outputDir != None):
+			makeDirs(outputDir)
+			fileObj = open(pathCombine2(outputDir, "list1.csv"), "w")
+			fileObj.seek(0, 0)
+			writeListToFile(fileObj, myList)
+			fileObj.close()
+
 	if(getList3):
 		os.chdir(relDir1)
 		
@@ -1168,8 +1184,58 @@ def main():
 		#dumpList(myList)
 		
 		myList = sortList2(myList)
+
+	if(compareLists):
+		os.chdir(relDir1)
+
+		if(outputDir != None):
+			if(dirExists2(outputDir)):
+				raise Exception("--output-dir already exists")
 		
-	#downloadFilesMaybe(earlyDownloadDir, mirror, oldRepoPath, pkgList, localList)
+		fileObj = open(pathCombine2(listDir1, "list1.csv"), "r")
+		fileObj.seek(0, 0)
+		myList1 = parseListFromFile(fileObj)
+		fileObj.close()
+		
+		myList1 = sortList2(myList1)
+		
+		fileObj = open(pathCombine2(listDir2, "list1.csv"), "r")
+		fileObj.seek(0, 0)
+		myList2 = parseListFromFile(fileObj)
+		fileObj.close()
+		
+		myList2 = sortList2(myList2)
+		
+		myList3 = compareListsSorted(myList1, myList2)
+
+		if(outputDir != None):
+			makeDirs(outputDir)
+			fileObj = open(pathCombine2(outputDir, "list1.csv"), "w")
+			fileObj.seek(0, 0)
+			writeListToFile(fileObj, myList3)
+			fileObj.close()
+
+	if(download):
+		os.chdir(relDir1)
+
+		if(inputDir == None):
+			raise Exception("with --download, --input-dir must be set")
+		if(outputDir == None):
+			raise Exception("with --download, --output-dir must be set")
+		
+		if(not dirExists2(outputDir)):
+			makeDirs(outputDir)
+			makeDirs(pathCombine2(outputDir, "pool"))
+			
+		if(not dirExists2(pathCombine2(outputDir, "pool"))):
+			raise Exception("--output-dir does not seem to be a download dir")
+
+		fileObj = open(pathCombine2(inputDir, "list1.csv"), "r")
+		fileObj.seek(0, 0)
+		myList = parseListFromFile(fileObj)
+		fileObj.close()
+		
+		downloadFiles(outputDir, mirror, myList)
 
 	print("DONE.")
 
