@@ -974,6 +974,8 @@ def makeRegularListFromSimpleFileList(localFiles):
 #
 
 def downloadFiles(outputDir, mirror, myList):
+	relDir = os.getcwd()
+
 	i = 0
 	while(i < len(myList)):
 		spec = myList[i]
@@ -985,8 +987,11 @@ def downloadFiles(outputDir, mirror, myList):
 
 		downloadFile(outputDir, mirror, spec.fileNameMinusPath, spec.theDir)
 
+		os.chdir(relDir)
+		
 		i += 1
 
+	os.chdir(relDir)
 	return
 
 def downloadFile(outputDir, mirror, fileNameMinusPath, theDir):
