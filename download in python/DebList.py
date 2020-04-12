@@ -1019,18 +1019,21 @@ def makeRegularListFromPackageList(pkgList):
 			continue
 		
 		if(pkg.theDir != None):
-			i = 0
+			j = 0
 			
 			if(len(pkg.files) != len(pkg.fileSizes)):
 				raise Exception("pkg not valid: file sizes not valid")
 			
-			while(i < len(pkg.files)):
+			while(j < len(pkg.files)):
 				spec = RepoFileSpec()
 				spec.theDir = pkg.theDir
-				spec.fileNameMinusPath = pkg.files[i]
-				spec.fileSize = pkg.fileSizes[i]
+				spec.fileNameMinusPath = pkg.files[j]
+				spec.fileSize = pkg.fileSizes[j]
 				
 				myList.append(spec)
+			
+				j += 1
+				continue
 			
 			i += 1
 			continue
