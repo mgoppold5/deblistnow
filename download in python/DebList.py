@@ -122,6 +122,19 @@ def compareStrings2(compRes, str1, str2):
 	if(compRes.greater): myStr += "greater"
 	print(str1 + "," + str2 + "," + myStr + ",")
 
+def getNumberFromString(numStr):
+	accum = 0
+	i = 0
+	while(i < len(numStr)):
+		accum *= 10
+		if(not(numStr[i] >= '0')
+			or not(numStr[i] <= '9')):
+			return None
+		accum += ord(numStr[i]) - ord('0')
+			
+		i += 1
+	return accum
+
 #
 # General helper functions
 #
@@ -130,6 +143,16 @@ def printRaw(theStr):
 	s2 = str(theStr)
 	sys.stdout.write(s2)
 	sys.stdout.flush()
+
+def getFileSize(path):
+	if(not os.path.isfile(path)): return None
+	
+	fileObj = open(path, "r")
+	SEEK_END = 2
+	fileObj.seek(0, SEEK_END)
+	num = fileObj.tell()
+	fileObj.close()
+	return num
 
 #
 # General directory helper functions
@@ -331,6 +354,11 @@ def writeListToFile(fileObj, myList):
 			"Type/String"
 			+ "," + "fileNameMinusPath"
 			+ "," + spec.fileNameMinusPath + NEWLINE)
+		if(spec.fileSize != None):
+			fileObj.write(
+				"Type/Int64"
+				+ "," + "fileSize"
+				+ "," + str(spec.fileSize) + NEWLINE)
 		
 		fileObj.write("DictEnd" + NEWLINE)
 
@@ -348,6 +376,15 @@ def addDictValue(spec, propertyName, valueStr, lineStr, lineNum):
 			print("Line Number: " + str(lineNum))
 			raise Exception("dict property set twice: " + "fileNameMinusPath")
 		spec.fileNameMinusPath = valueStr
+		return
+
+	if(propertyName == "fileSize"):
+		#print(valueStr + "e")
+		num = getNumberFromString(valueStr)
+		if(num == None):
+			print("Line Number: " + str(lineNum))
+			raise Exception("number not valid: " + "fileSize")
+		spec.fileSize = num
 		return
 
 	print("lineNum: " + str(lineNum))
@@ -438,12 +475,25 @@ def parseListFromFile(fileObj):
 						if(csvType == "Type/String"):
 							i += 1
 							continue
+
+						if(csvType == "Type/Int64"):
+							i += 2
+							continue
 						
 						print("lineNum: " + str(lineNum))
 						raise Exception("line not recognized: " + line)
 						
 								
 					if(i == 1):
+						addDictValue(
+							spec,
+							getSepListItem(line, 1, ','),
+							getSepListItem(line, 2, ','),
+							line,
+							lineNum)
+						break
+
+					if(i == 2):
 						addDictValue(
 							spec,
 							getSepListItem(line, 1, ','),
@@ -556,7 +606,7 @@ def compareListsSorted(myList1, myList2):
 #
 
 def getFileList(theDir):
-	localList1 = []
+	myList1 = []
 	
 	if(not dirExists2(theDir)):
 		return myList1
@@ -578,32 +628,37 @@ def getFileList(theDir):
 			continue
 		
 		if(fileExists(pathCombine2(theDir, entry))):
-			localList1.append(pathCombine2(theDir, entry))
+			spec = RepoFileSpec()
+			spec.theDir = theDir
+			spec.fileNameMinusPath = entry
+			spec.fileSize = getFileSize(pathCombine2(theDir, entry))
+			
+			myList1.append(spec)
 			i += 1
 			continue
 
 		if(dirExists2(pathCombine2(theDir, entry))):
 			if(len(entry) == 1):
 				if(entry[0] >= '0' and entry[0] <= '9'):
-					localList1.extend(getFileList(pathCombine2(theDir, entry)))
+					myList1.extend(getFileList(pathCombine2(theDir, entry)))
 					i += 1
 					continue
 
 		if(dirExists(pathCombine2(theDir, entry))):
-			localList1.extend(getFileList(pathCombine2(theDir, entry)))
+			myList1.extend(getFileList(pathCombine2(theDir, entry)))
 			i += 1
 			continue
 		
 		# otherwise, ignore path
 		i += 1
 	
-	return localList1
+	return myList1
 
-def replaceBackslash(localFiles):
+def replaceBackslash(myList):
 	print("Replacing backslashes in filenames in list...")
 	i = 0
-	while(i < len(localFiles)):
-		fileStr = localFiles[i]
+	while(i < len(myList)):
+		fileStr = myList[i].theDir
 		j = 0
 		while(j < len(fileStr)):
 			if(fileStr[j] == '\\'):
@@ -664,17 +719,17 @@ def rebaseIfPathFound(path1, innerPath):
 	
 	return None
 
-def removeNonRepoFiles(localList):
+def removeNonRepoFiles(myList):
 	print("Removing non repository files in list...")
 	i = 0
-	while(i < len(localList)):
-		path1 = localList[i]
+	while(i < len(myList)):
+		path1 = myList[i].theDir
 		
 		path2 = rebaseIfPathFound(path1, "pool/main")
 		if(path2 != None):
 			path2 = rebaseIfPathFound(path2, "main")
 			if(path2 != None):
-				localList[i] = path2
+				myList[i].theDir = path2
 				i += 1
 				continue
 		
@@ -682,7 +737,7 @@ def removeNonRepoFiles(localList):
 		if(path2 != None):
 			path2 = rebaseIfPathFound(path2, "contrib")
 			if(path2 != None):
-				localList[i] = path2
+				myList[i].theDir = path2
 				i += 1
 				continue
 		
@@ -690,11 +745,11 @@ def removeNonRepoFiles(localList):
 		if(path2 != None):
 			path2 = rebaseIfPathFound(path2, "non-free")
 			if(path2 != None):
-				localList[i] = path2
+				myList[i].theDir = path2
 				i += 1
 				continue
 		
-		localList.pop(i)
+		myList.pop(i)
 		continue
 	return
 
@@ -706,7 +761,9 @@ class PackageInfo:
 	def __init__(self):
 		self.pkgName = None
 		self.fileName = None
+		self.filesize = None
 		self.files = []
+		self.fileSizes = []
 		self.theDir = None
 
 class ArchInfo:
@@ -766,9 +823,23 @@ def addPropertyLine(pkg, labelStr, lineStr, lineNum):
 		if(spaceCount != 2):
 			print("Line Number: " + str(lineNum))
 			raise Exception("property malformed: " + "Files")
+		fsStr = getSepListItem(lineStr, 1, ' ')
+		num = getNumberFromString(fsStr)
+		if(num == None):
+			print("Line Number: " + str(lineNum))
+			raise Exception("file sizes not valid numbers: " + "Files")
 		pkg.files.append(getSepListItem(lineStr, 2, ' '))
+		pkg.fileSizes.append(num)
 		return
 
+	if(labelStr == "Size"):
+		num = getNumberFromString(lineStr)
+		if(num == None):
+			print("Line Number: " + str(lineNum))
+			raise Exception("file sizes not valid numbers: " + "Files")
+		pkg.filesize = num
+		return
+	
 def parseMirrorList(outputDir, archInfo):
 	if(not dirExists(outputDir)):
 		raise Exception("working dir does not exist: " + outputDir)
@@ -927,46 +998,45 @@ def parseMirrorList(outputDir, archInfo):
 # Cross logic functions 1
 #
 
-def makeSimpleFileListFromPackageList(pkgList):
+def makeRegularListFromPackageList(pkgList):
 	print("Working on list...")
 
 	i = 0
 	pLen = len(pkgList)
-	localFiles = []
+	myList = []
 	while(i < pLen):
 		pkg = pkgList[i]
 
 		if(pkg.fileName != None):
-			localFiles.append(pkg.fileName)
+			spec = RepoFileSpec()
+			spec.fileName = pkg.fileName
+			spec.calc()
+			spec.fileSize = pkg.filesize
+
+			myList.append(spec)
 			
 			i += 1
 			continue
 		
 		if(pkg.theDir != None):
-			for fName in pkg.files:
-				localFiles.append(pathCombine2(pkg.theDir, fName))
+			i = 0
+			
+			if(len(pkg.files) != len(pkg.fileSizes)):
+				raise Exception("pkg not valid: file sizes not valid")
+			
+			while(i < len(pkg.files)):
+				spec = RepoFileSpec()
+				spec.theDir = pkg.theDir
+				spec.fileNameMinusPath = pkg.files[i]
+				spec.fileSize = pkg.fileSizes[i]
+				
+				myList.append(spec)
 			
 			i += 1
 			continue
 		
 		raise Exception("pkg not valid")
 	
-	return localFiles
-
-def makeRegularListFromSimpleFileList(localFiles):
-	print("Working on list...")
-	myList = []
-	i = 0
-	fLen = len(localFiles)
-	while(i < fLen):
-		spec = RepoFileSpec()
-		spec.fileName = localFiles[i]
-		spec.calc()
-		
-		myList.append(spec)
-		
-		i += 1
-		
 	return myList
 
 #
@@ -1126,10 +1196,9 @@ def main():
 			if(dirExists2(outputDir)):
 				raise Exception("--output-dir already exists")
 
-		localFiles = getFileList(inputDir)
-		replaceBackslash(localFiles)
-		removeNonRepoFiles(localFiles)
-		myList = makeRegularListFromSimpleFileList(localFiles)
+		myList = getFileList(inputDir)
+		replaceBackslash(myList)
+		removeNonRepoFiles(myList)
 		myList = sortList2(myList)
 		print("List length: " + str(len(myList)))
 
@@ -1160,10 +1229,9 @@ def main():
 		pkgList = parseMirrorList(outputDir, archInfo)
 		print("Package count: " + str(len(pkgList)))
 		
-		localFiles = makeSimpleFileListFromPackageList(pkgList)
-		replaceBackslash(localFiles)
-		removeNonRepoFiles(localFiles)
-		myList = makeRegularListFromSimpleFileList(localFiles)
+		myList = makeRegularListFromPackageList(pkgList)
+		replaceBackslash(myList)
+		removeNonRepoFiles(myList)
 		myList = sortList2(myList)
 		print("List length: " + str(len(myList)))
 
