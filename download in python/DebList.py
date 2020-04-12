@@ -1055,7 +1055,7 @@ def downloadFiles(outputDir, mirror, myList):
 			
 			raise Exception("a RepoFileSpec is bad")
 
-		downloadFile(outputDir, mirror, spec.fileNameMinusPath, spec.theDir)
+		downloadFile(outputDir, mirror, spec)
 
 		os.chdir(relDir)
 		
@@ -1064,12 +1064,12 @@ def downloadFiles(outputDir, mirror, myList):
 	os.chdir(relDir)
 	return
 
-def downloadFile(outputDir, mirror, fileNameMinusPath, theDir):
-	print("filename: " + fileNameMinusPath)
-	print("thedir: " + theDir)
+def downloadFile(outputDir, mirror, spec):
+	print("filename: " + spec.fileNameMinusPath)
+	print("thedir: " + spec.theDir)
 	
 	downPath = pathCombine2(outputDir, "pool")
-	downPath = pathCombine2(downPath, theDir)
+	downPath = pathCombine2(downPath, spec.theDir)
 	makeDirs(downPath)
 	os.chdir(downPath)
 	
@@ -1077,7 +1077,12 @@ def downloadFile(outputDir, mirror, fileNameMinusPath, theDir):
 		+ mirror
 		+ "/" + "debian"
 		+ "/" + "pool"
-		+ "/" + theDir + "/" + fileNameMinusPath)
+		+ "/" + spec.theDir + "/" + spec.fileNameMinusPath)
+	
+	downloadFileSize = getFileSize(spec.fileNameMinusPath)
+	if(downloadFileSize != None):
+		if(downloadFileSize == spec.fileSize):
+			return
 	
 	r = os.system(
 		"wget -c"
