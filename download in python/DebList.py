@@ -191,6 +191,7 @@ class RepoFileSpec:
 		self.fileName = None
 		self.theDir = None
 		self.fileNameMinusPath = None
+		self.fileSize = None
 
 	def calc(self):
 		if(self.fileName == None):
@@ -387,7 +388,7 @@ def addDictValue(spec, propertyName, valueStr, lineStr, lineNum):
 		spec.fileSize = num
 		return
 
-	print("lineNum: " + str(lineNum))
+	print("Line Number: " + str(lineNum))
 	raise Exception("line not recognized: " + lineStr)
 	return
 
@@ -836,7 +837,7 @@ def addPropertyLine(pkg, labelStr, lineStr, lineNum):
 		num = getNumberFromString(lineStr)
 		if(num == None):
 			print("Line Number: " + str(lineNum))
-			raise Exception("file sizes not valid numbers: " + "Files")
+			raise Exception("file size not valid number: " + "Size")
 		pkg.filesize = num
 		return
 	
@@ -875,15 +876,6 @@ def parseMirrorList(outputDir, archInfo):
 			continue
 		
 		if(havePackage):
-			if(s1 == ""):
-				havePackage = False
-				print("Done with package")
-				pkgList.append(pkg)
-				pkg = None
-				s1 = f1.readline()
-				lineNum += 1
-				continue
-
 			if(s1 == NEWLINE):
 				havePackage = False
 				#print("Done with package, lineNo=" + str(lineNum))
@@ -938,13 +930,13 @@ def parseMirrorList(outputDir, archInfo):
 						lineNum += 1
 						break
 					
-					if(c == 13):
+					if(ord(c) == 13):
 						# ignore line
 						s1 = f1.readline()
 						lineNum += 1
 						break
 
-					if(c == 10):
+					if(ord(c) == 10):
 						# ignore line
 						s1 = f1.readline()
 						lineNum += 1
