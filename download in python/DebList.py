@@ -276,7 +276,7 @@ def sortList2(myList):
 	myLen = len(myList)
 
 	if(myLen == 0):
-		print()
+		printRaw(NEWLINE)
 		return myList2
 	
 	i = 0
@@ -537,6 +537,7 @@ def parseListFromFile(fileObj):
 		print("lineNum: " + str(lineNum))
 		raise Exception("line not recognized: " + line)
 		continue
+
 	printRaw(NEWLINE)
 	return myList
 
@@ -752,6 +753,7 @@ def removeNonRepoFiles(myList):
 		
 		myList.pop(i)
 		continue
+
 	return
 
 #
@@ -762,7 +764,7 @@ class PackageInfo:
 	def __init__(self):
 		self.pkgName = None
 		self.fileName = None
-		self.filesize = None
+		self.fileSize = None
 		self.files = []
 		self.fileSizes = []
 		self.theDir = None
@@ -834,11 +836,14 @@ def addPropertyLine(pkg, labelStr, lineStr, lineNum):
 		return
 
 	if(labelStr == "Size"):
+		if(pkg.fileSize != None):
+			print("Line Number: " + str(lineNum))
+			raise Exception("property set twice: " + "Size")
 		num = getNumberFromString(lineStr)
 		if(num == None):
 			print("Line Number: " + str(lineNum))
 			raise Exception("file size not valid number: " + "Size")
-		pkg.filesize = num
+		pkg.fileSize = num
 		return
 	
 def parseMirrorList(outputDir, archInfo):
