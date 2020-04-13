@@ -1008,7 +1008,7 @@ def makeRegularListFromPackageList(pkgList):
 			spec = RepoFileSpec()
 			spec.fileName = pkg.fileName
 			spec.calc()
-			spec.fileSize = pkg.filesize
+			spec.fileSize = pkg.fileSize
 
 			myList.append(spec)
 			
