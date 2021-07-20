@@ -33,6 +33,7 @@ import sys
 QUOTE = "\""
 NEWLINE = "\n"
 
+
 #
 # General string related functions
 #
@@ -135,6 +136,10 @@ def getNumberFromString(numStr):
 		i += 1
 	return accum
 
+def isStringSimpleNumber(numStr):
+	return getNumberFromString(numStr) != None
+
+
 #
 # General helper functions
 #
@@ -154,6 +159,7 @@ def getFileSize(path):
 	fileObj.close()
 	return num
 
+
 #
 # General directory helper functions
 #
@@ -167,20 +173,80 @@ def pathCombine2(path1, path2):
 	return pathCombine(path1, path2, "/")
 
 def dirExists(path1):
-	r = (os.path.isdir(path1) and not os.path.islink(path1))
+	r = (os.path.isdir(path1)
+		and not os.path.islink(path1)
+		and not os.path.ismount(path1))
 	return r
 
 def dirExists2(path1):
 	return os.path.isdir(path1)
 
+def linkExists(path1):
+	return os.path.islink(path1)
+
+def mountExists(path1):
+	return os.path.ismount(path1)
+
 def fileExists(path1):
 	return os.path.isfile(path1)
 
 def makeDirs(path1):
-	if(dirExists2(path1)):
-		return
+	if(dirExists2(path1)): return
 	os.makedirs(path1)
 	return
+
+def rebaseIfPathFound(path1, innerPath):
+	if(innerPath == None or innerPath == ""):
+		return None
+	
+	i = 0
+	path1Len = len(path1)
+	possibleMatchIndex = 0
+	isPossibleMatch = False
+	j = 0
+	while(i < path1Len):
+		c = path1[i]
+		if(not isPossibleMatch):
+			if(i == 0):
+				if(c != '/'
+					and c != '\\'
+					and c == innerPath[0]):
+					
+					possibleMatchIndex = i
+					i = 1
+					j = 1
+					isPossibleMatch = True
+					continue
+			
+			if(path1[i] == '/' or path1[i] == '\\'):
+				j = 0
+				i += 1
+				isPossibleMatch = True
+				possibleMatchIndex = i
+				continue
+		
+		if(isPossibleMatch):
+			if(j < len(innerPath)):
+				if(path1[i] != innerPath[j]):
+					isPossibleMatch = False
+					continue
+				
+				i += 1
+				j += 1
+				continue
+			
+			if(path1[i] == '/' or path1[i] == '\\'): break
+			
+			isPossibleMatch = False
+			continue
+			
+		i += 1
+		
+	if(isPossibleMatch):
+		return path1[possibleMatchIndex:]
+	
+	return None
+
 
 #
 # RepoFileSpec list functions
@@ -220,6 +286,67 @@ class RepoFileSpec:
 
 		return
 
+def getFileList(theDir):
+	myList1 = []
+	
+	if(not dirExists2(theDir)):
+		return myList1
+	
+	localList2 = os.listdir(theDir)
+	if(localList2 == None):
+		return localList1
+	
+	i = 0
+	while(i < len(localList2)):
+		entry = localList2[i]
+		
+		if(entry == "." or entry == ".."):
+			i += 1
+			continue
+		
+		if(entry == None or entry == ""):
+			i += 1
+			continue
+		
+		if(fileExists(pathCombine2(theDir, entry))):
+			spec = RepoFileSpec()
+			spec.theDir = theDir
+			spec.fileNameMinusPath = entry
+			spec.fileSize = getFileSize(pathCombine2(theDir, entry))
+			
+			myList1.append(spec)
+			i += 1
+			continue
+
+		if(dirExists2(pathCombine2(theDir, entry))):
+			if(isStringSimpleNumber(entry)):
+				myList1.extend(getFileList(pathCombine2(theDir, entry)))
+				i += 1
+				continue
+
+		if(dirExists(pathCombine2(theDir, entry))):
+			myList1.extend(getFileList(pathCombine2(theDir, entry)))
+			i += 1
+			continue
+		
+		# otherwise, ignore path
+		i += 1
+	
+	return myList1
+
+def replaceBackslash(myList):
+	print("Replacing backslashes in filenames in list...")
+	i = 0
+	while(i < len(myList)):
+		fileStr = myList[i].theDir
+		j = 0
+		while(j < len(fileStr)):
+			if(fileStr[j] == '\\'):
+				fileStr[j] = '/'
+			j += 1
+		i += 1
+	return
+	
 def sortListSwapAt(myList, i):
 	temp = myList[i + 1]
 	myList[i + 1] = myList[i]
@@ -541,6 +668,38 @@ def parseListFromFile(fileObj):
 	printRaw(NEWLINE)
 	return myList
 
+def isSpecInList1(myComp, myList1, spec):
+	insertMax = len(myList1)
+	insertMin = 0
+	
+	while(True):
+		inBetween = int((insertMax + insertMin) / 2)
+		
+		if(insertMin == insertMax): return False
+		if(inBetween >= len(myList1)): return False
+		
+		compareStrings(myComp,
+			spec.theDir,
+			myList1[inBetween].theDir)
+		
+		if(not myComp.less and not myComp.greater):
+			compareStrings(myComp,
+				spec.fileNameMinusPath,
+				myList1[inBetween].fileNameMinusPath)
+			
+		if(myComp.greater):
+			insertMin = inBetween + 1
+			continue
+		
+		if(myComp.less):
+			insertMax = inBetween
+			continue
+		
+		# duplicate
+		break
+	
+	return True
+	
 def compareListsSorted(myList1, myList2):
 	myList3 = []
 	myComp = CompareResult()
@@ -558,6 +717,32 @@ def compareListsSorted(myList1, myList2):
 
 		spec = myList2[i]
 		
+		if(not isSpecInList1(myComp, myList1, spec)):
+			myList3.append(spec)
+				
+		i += 1
+		#print("doing again")
+		continue
+	
+	printRaw(NEWLINE)
+	return myList3
+
+def insertList2IntoList1Sorted(myList1, myList2):
+	myComp = CompareResult()
+	
+	#print("Adding list to list...")
+	
+	i = 0
+	theLen = len(myList2)
+	lastProgress100 = 0
+	while(i < theLen):
+		progress100 = int(i * 100 / theLen)
+		if(lastProgress100 + 2 < progress100):
+			#printRaw(" " + str(progress100) + "%")
+			lastProgress100 = progress100
+
+		spec = myList2[i]
+		
 		insertMax = len(myList1)
 		insertMin = 0
 		
@@ -565,13 +750,11 @@ def compareListsSorted(myList1, myList2):
 			inBetween = int((insertMax + insertMin) / 2)
 			
 			if(insertMin == insertMax):
-				#myList2.insert(inBetween, spec)
-				myList3.append(spec)
+				myList1.insert(inBetween, spec)
 				break
 
-			if(inBetween >= len(myList2)):
-				#myList2.insert(inBetween, spec)
-				myList3.append(spec)
+			if(inBetween >= len(myList1)):
+				myList1.insert(inBetween, spec)
 				break
 			
 			compareStrings(myComp,
@@ -591,9 +774,83 @@ def compareListsSorted(myList1, myList2):
 				insertMax = inBetween
 				continue
 			
+			# DUPLICATE
+			break
+		
+		i += 1
+		#print("doing again")
+		continue
+	
+	#printRaw(NEWLINE)
+	#print(str(len(myList1)) + " " + str(len(myList2)))
+	return
+
+
+#
+# RepoFileSpec list functions,
+# that are dependant on Debian's package naming conventions
+#
+
+def compareListsSorted2(myList1, myList2):
+	myList3 = []
+	myComp = CompareResult()
+	myComp2 = CompareResult()
+	
+	print("Comparing lists...")
+	
+	i = 0
+	theLen = len(myList2)
+	lastProgress100 = 0
+	while(i < theLen):
+		myList4 = []
+		
+		progress100 = int(i * 100 / theLen)
+		if(lastProgress100 + 2 < progress100):
+			printRaw(" " + str(progress100) + "%")
+			lastProgress100 = progress100
+
+		spec = myList2[i]
+		
+		insertMax = len(myList1)
+		insertMin = 0
+		
+		while(True):
+			inBetween = int((insertMax + insertMin) / 2)
+			
+			if(insertMin == insertMax): break
+			if(inBetween >= len(myList1)): break
+			
+			compareStrings(myComp,
+				spec.theDir,
+				myList1[inBetween].theDir)
+			
+			if(not myComp.less and not myComp.greater):
+				compareLikeDebianPackageNames(myComp,
+					spec.fileNameMinusPath,
+					myList1[inBetween].fileNameMinusPath)
+				
+				if(not myComp.less and not myComp.greater):
+					compareStrings(myComp,
+						spec.fileNameMinusPath,
+						myList1[inBetween].fileNameMinusPath)
+					
+					if(myComp.less or myComp.greater):
+						if(not isSpecInList1(myComp2, myList1, spec)):
+							myList4.append(spec)
+				
+			if(myComp.greater):
+				insertMin = inBetween + 1
+				continue
+			
+			if(myComp.less):
+				insertMax = inBetween
+				continue
+			
 			# duplicate
 			# DONT DO ANYTHING
 			break
+		
+		insertList2IntoList1Sorted(myList3, myList4)
 		
 		i += 1
 		#print("doing again")
@@ -602,124 +859,87 @@ def compareListsSorted(myList1, myList2):
 	printRaw(NEWLINE)
 	return myList3
 
-#
-# Simple file list functions,
-# that relate to Debian cd-s and repositories
-#
-
-def getFileList(theDir):
-	myList1 = []
+def compareLikeDebianPackageNames(compRes, str1, str2):
+	compRes.less = False
+	compRes.greater = False
 	
-	if(not dirExists2(theDir)):
-		return myList1
-	
-	localList2 = os.listdir(theDir)
-	if(localList2 == None):
-		return localList1
-	
-	i = 0
-	while(i < len(localList2)):
-		entry = localList2[i]
-		
-		if(entry == "." or entry == ".."):
-			i += 1
-			continue
-		
-		if(entry == None or entry == ""):
-			i += 1
-			continue
-		
-		if(fileExists(pathCombine2(theDir, entry))):
-			spec = RepoFileSpec()
-			spec.theDir = theDir
-			spec.fileNameMinusPath = entry
-			spec.fileSize = getFileSize(pathCombine2(theDir, entry))
-			
-			myList1.append(spec)
-			i += 1
-			continue
-
-		if(dirExists2(pathCombine2(theDir, entry))):
-			if(len(entry) == 1):
-				if(entry[0] >= '0' and entry[0] <= '9'):
-					myList1.extend(getFileList(pathCombine2(theDir, entry)))
-					i += 1
-					continue
-
-		if(dirExists(pathCombine2(theDir, entry))):
-			myList1.extend(getFileList(pathCombine2(theDir, entry)))
-			i += 1
-			continue
-		
-		# otherwise, ignore path
-		i += 1
-	
-	return myList1
-
-def replaceBackslash(myList):
-	print("Replacing backslashes in filenames in list...")
-	i = 0
-	while(i < len(myList)):
-		fileStr = myList[i].theDir
-		j = 0
-		while(j < len(fileStr)):
-			if(fileStr[j] == '\\'):
-				fileStr[j] = '/'
-			j += 1
-		i += 1
-	return
-	
-def rebaseIfPathFound(path1, innerPath):
-	if(innerPath == None or innerPath == ""):
-		return None
-	
-	i = 0
-	path1Len = len(path1)
-	possibleMatchIndex = 0
-	isPossibleMatch = False
-	j = 0
-	while(i < path1Len):
-		c = path1[i]
-		if(not isPossibleMatch):
-			if(i == 0):
-				if(c != '/'
-					and c != '\\'
-					and c == innerPath[0]):
-					
-					possibleMatchIndex = i
-					i = 1
-					j = 1
-					isPossibleMatch = True
-					continue
-			
-			if(path1[i] == '/' or path1[i] == '\\'):
-				j = 0
-				i += 1
-				isPossibleMatch = True
-				possibleMatchIndex = i
-				continue
-		
-		if(isPossibleMatch):
-			if(j < len(innerPath)):
-				if(path1[i] != innerPath[j]):
-					isPossibleMatch = False
-					continue
+	underscore1Count = getSepListLength(str1, '_')
+	underscore2Count = getSepListLength(str2, '_')
+	if(underscore1Count == underscore2Count):
+		if(underscore1Count >= 1):
+			isOk = False
+			str1Name = getSepListItem(str1, 0, '_')
+			str2Name = getSepListItem(str2, 0, '_')
+			if(str1Name == str2Name): isOk = True
+			if(isOk):
+				if(underscore1Count >= 2):
+					str1Tail = getSepListItem(str1, 2, '_')
+					str2Tail = getSepListItem(str2, 2, '_')
+					if(str1Tail == str2Tail):
+						return
 				
-				i += 1
-				j += 1
-				continue
+				if(underscore1Count == 1):
+					str1Tail = getSepListItem(str1, 1, '_')
+					str2Tail = getSepListItem(str2, 1, '_')
+					if(namesHaveLikeDebianTail2(str1Tail, str2Tail)):
+						return
+					
+	compareStrings(compRes, str1, str2)
+	return
+
+def namesHaveLikeDebianTail2(strTail1, strTail2):
+	if(strTail1.endswith(".tar.gz")):
+		if(strTail1.endswith(".tar.gz")
+			!= strTail2.endswith(".tar.gz")):
 			
-			if(path1[i] == '/' or path1[i] == '\\'): break
+			return False
+		if(strTail1.endswith(".debian.tar.gz")):
+			if(strTail1.endswith(".debian.tar.gz")
+				!= strTail2.endswith(".debian.tar.gz")):
+				
+				return False
+		if(strTail1.endswith(".orig.tar.gz")):
+			if(strTail1.endswith(".orig.tar.gz")
+				!= strTail2.endswith(".orig.tar.gz")):
+				
+				return False
+	if(strTail1.endswith(".tar.xz")):
+		if(strTail1.endswith(".tar.xz")
+			!= strTail2.endswith(".tar.xz")):
 			
-			isPossibleMatch = False
-			continue
+			return False
+		if(strTail1.endswith(".debian.tar.xz")):
+			if(strTail1.endswith(".debian.tar.xz")
+				!= strTail2.endswith(".debian.tar.xz")):
+				
+				return False
+		if(strTail1.endswith(".orig.tar.xz")):
+			if(strTail1.endswith(".orig.tar.xz")
+				!= strTail2.endswith(".orig.tar.xz")):
+				
+				return False
+	if(strTail1.endswith(".tar.bz2")):
+		if(strTail1.endswith(".tar.bz2")
+			!= strTail2.endswith(".tar.bz2")):
 			
-		i += 1
-		
-	if(isPossibleMatch):
-		return path1[possibleMatchIndex:]
+			return False
+		if(strTail1.endswith(".debian.tar.bz2")):
+			if(strTail1.endswith(".debian.tar.bz2")
+				!= strTail2.endswith(".debian.tar.bz2")):
+				
+				return False
+		if(strTail1.endswith(".orig.tar.bz2")):
+			if(strTail1.endswith(".orig.tar.bz2")
+				!= strTail2.endswith(".orig.tar.bz2")):
+				
+				return False
+	if(strTail1.endswith(".dsc")):
+		if(strTail1.endswith(".dsc")
+			!= strTail2.endswith(".dsc")):
+			
+			return False
 	
-	return None
+	return True
 
 def removeNonRepoFiles(myList):
 	print("Removing non repository files in list...")
@@ -756,8 +976,11 @@ def removeNonRepoFiles(myList):
 
 	return
 
+
 #
-# Debian formatted list functions
+# Functions/Objects for handling,
+# Debian's package description and list file format,
+# used on debian's public servers
 #
 
 class PackageInfo:
@@ -991,6 +1214,7 @@ def parseMirrorList(outputDir, archInfo):
 	os.chdir(relDir)
 	return pkgList
 
+
 #
 # Cross logic functions 1
 #
@@ -1038,6 +1262,7 @@ def makeRegularListFromPackageList(pkgList):
 		raise Exception("pkg not valid")
 	
 	return myList
+
 
 #
 # Download functions
@@ -1089,9 +1314,10 @@ def downloadFile(outputDir, mirror, spec):
 		+ " --quiet --show-progress --progress=bar"
 		+ " " + webPath)
 	if(r != 0):
-		raise Exception("file download failed: " + fileNameMinusPath)
+		raise Exception("file download failed: " + spec.fileNameMinusPath)
 	
 	return
+
 
 #
 # Command processing functions
@@ -1125,6 +1351,7 @@ def main():
 	getList3 = False
 	download = False
 	compareLists = False
+	compareLists2 = False
 	outputDir = None
 	inputDir = None
 	arch = None
@@ -1156,6 +1383,22 @@ def main():
 			listDir1 = nextArg
 			listDir2 = nextArg2
 			compareLists = True
+			i += 3
+			continue
+
+		if(arg == "--compare-lists-find-updates"):
+			nextArg2 = None
+			if(i + 2 < count): nextArg2 = sys.argv[i + 2]
+			
+			if(nextArg == None or nextArg2 == None):
+				raise Exception("--compare-lists-find-updates needs two list directories as params")
+			
+			if(not dirExists2(nextArg) or not dirExists2(nextArg2)):
+				raise Exception("--compare-lists-find-updates needs two list directories as params")
+			
+			listDir1 = nextArg
+			listDir2 = nextArg2
+			compareLists2 = True
 			i += 3
 			continue
 			
@@ -1285,6 +1528,36 @@ def main():
 		myList2 = sortList2(myList2)
 		
 		myList3 = compareListsSorted(myList1, myList2)
+
+		if(outputDir != None):
+			makeDirs(outputDir)
+			fileObj = open(pathCombine2(outputDir, "list1.csv"), "w")
+			fileObj.seek(0, 0)
+			writeListToFile(fileObj, myList3)
+			fileObj.close()
+
+	if(compareLists2):
+		os.chdir(relDir1)
+
+		if(outputDir != None):
+			if(dirExists2(outputDir)):
+				raise Exception("--output-dir already exists")
+		
+		fileObj = open(pathCombine2(listDir1, "list1.csv"), "r")
+		fileObj.seek(0, 0)
+		myList1 = parseListFromFile(fileObj)
+		fileObj.close()
+		
+		myList1 = sortList2(myList1)
+		
+		fileObj = open(pathCombine2(listDir2, "list1.csv"), "r")
+		fileObj.seek(0, 0)
+		myList2 = parseListFromFile(fileObj)
+		fileObj.close()
+		
+		myList2 = sortList2(myList2)
+
+		myList3 = compareListsSorted2(myList1, myList2)
 
 		if(outputDir != None):
 			makeDirs(outputDir)
